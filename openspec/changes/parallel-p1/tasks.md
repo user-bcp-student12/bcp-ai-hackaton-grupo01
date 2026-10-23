@@ -32,6 +32,6 @@
 
 ## 6. Display durable receipt and own transaction history
 <!-- issue: area=frontend size=M priority=p1 files=web/src/features/receipt-history/,web/src/App.tsx -->
-- [ ] 6.1 Render history and receipt from an API mock using the PaymentView Contract; format PEN/direction and show the fictitious-money disclaimer.
-- [ ] 6.2 Render loading/error/empty/not-found without invented success; invalidate history on a payment-success event.
-- [ ] 6.3 Test component states and receipt/reference consistency, including unrelated receipt denial.
+- [x] 6.1 Render history and receipt from an API mock using the PaymentView Contract; format PEN/direction and show the fictitious-money disclaimer.
+- [x] 6.2 Render loading/error/empty/not-found without invented success; invalidate history on a payment-success event.
+- [x] 6.3 Test component states and receipt/reference consistency, including unrelated receipt denial.

@@ -6,6 +6,8 @@ import { RegistrationPage } from "./features/onboarding/RegistrationPage";
 import { ContactsPage } from "./features/contacts/ContactsPage";
 import { PaymentPage } from "./features/payments/PaymentPage";
 import { CURRENT_OWNER_ID } from "./features/payments/session";
+import { PaymentHistoryPage } from "./features/receipt-history/PaymentHistoryPage";
+import { PaymentReceiptPage } from "./features/receipt-history/PaymentReceiptPage";
 
 export function App() {
   return (
@@ -19,6 +21,8 @@ export function App() {
         path="/pagos"
         element={<PaymentPage ownerUserId={CURRENT_OWNER_ID} />}
       />
+      <Route path="/movimientos" element={<PaymentHistoryPage />} />
+      <Route path="/movimientos/:paymentId" element={<PaymentReceiptPage />} />
     </Routes>
   );
 }
