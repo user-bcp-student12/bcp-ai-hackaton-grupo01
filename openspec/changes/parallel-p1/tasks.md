@@ -14,9 +14,9 @@
 
 ## 3. Expose participant receipt and history queries
 <!-- issue: area=backend size=S priority=p1 agent=auto files=api/src/features/receipt-history/,api/src/app.ts -->
-- [ ] 3.1 Implement GET /payments and /payments/:id/receipt under /api/v1 over a fake payment-query port; verify no write side effect and no new receipt model.
-- [ ] 3.2 Apply active participant authorization and createdAt DESC then id DESC ordering; unrelated ID returns the same 404 as missing.
-- [ ] 3.3 Test inject: incoming/outgoing, empty, order, both participants and third-party denial.
+- [x] 3.1 Implement GET /payments and /payments/:id/receipt under /api/v1 over a fake payment-query port; verify no write side effect and no new receipt model.
+- [x] 3.2 Apply active participant authorization and createdAt DESC then id DESC ordering; unrelated ID returns the same 404 as missing.
+- [x] 3.3 Test inject: incoming/outgoing, empty, order, both participants and third-party denial.
 
 ## 4. Add contact search, save and selection interface
 <!-- issue: area=frontend size=M priority=p1 files=web/src/features/contacts/,web/src/App.tsx -->
