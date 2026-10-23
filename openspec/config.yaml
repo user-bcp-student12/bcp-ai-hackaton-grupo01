@@ -1,0 +1,108 @@
+schema: spec-driven
+githubCopilot:
+  cloudAgent: false
+
+# Project brief. The `kickoff` skill fills this in, replacing the <...> placeholders.
+# OpenSpec injects it into every proposal, design, tasks and apply instruction, so
+# every worker agent sees the problem, the demo and the stack.
+# Keep it to about one page. API contracts do NOT go here: they live in each change's
+# design.md and specs/, and in openspec/specs/ once archived.
+context: |
+  Wallet Grupo 1: simulated Peru wallet, six people in two execution lanes.
+  Functional cutoff: 2026-10-23 12:30 America/Lima (17:30 UTC).
+  The initial six-hour estimate was withdrawn: less than 2.5 hours remained at
+  scope approval. Even the reduced p0 is at risk; do not promise completion.
+
+  Problem: people making frequent small transfers face slow onboarding and
+  uncertain payment confirmation. This demo uses only fictitious identities and money.
+
+  Demo script (approved reduced p0, identical to README):
+    1. Register a fictitious DNI or CE, phone, email and six-digit password.
+    2. Show deterministic local KYC: activa, pendiente or rechazada.
+    3. Log in using document type, number and password; inactive accounts see status only.
+    4. Show an active account's wallet and configurable fictitious PEN balance.
+
+  MVP scope
+    In (must-haves, p0): minimal scaffold, accessible UI shell, registration,
+      validation, three KYC outcomes, hashed passwords, login/logout and own wallet.
+    Stretch (approved opportunities): none.
+    Approved follow-on (p1, after cutoff): search/add/list contacts, low-value
+      contact payment with atomic balances and persistent idempotency, receipt/history.
+      These are original stories, not optional new opportunities; never block p0.
+    Later: QR/merchant payments, callbacks and broader idempotency story, timeouts
+      with provider PENDING, reversals/support, reconciliation, biometrics;
+      copying/sharing receipts, anti-duplicate visual panel, onboarding stopwatch,
+      simultaneous sender/receiver view, favorites and history filters.
+    Out: real funds, real KYC/biometrics, bank rails, production compliance claims,
+      multipais, loyalty, third-party public APIs and deployment to public hosting.
+
+  Approved decisions: TypeScript Fastify backend; React TypeScript frontend;
+    local SQLite single source of truth; Node 24 compatibility probe in scaffold;
+    opaque bearer session held only in browser memory, one-hour TTL; scrypt hashes.
+    DNI exactly 8 digits; CE 9-12 uppercase alphanumerics (demo rule, not official
+    document verification); Peru mobile 9 digits starting 9, normalized +51.
+    Document pair, phone and normalized email unique. Only activa creates a wallet;
+    other KYC outcomes persist the user with walletId=null and active=false.
+    Initial fictitious balance PEN 1000 and maximum payment PEN 500 configurable
+    as integer cents; not regulatory limits. No approved optional opportunities.
+    Local demo explicitly replaces the kickoff public hello-world deployment.
+
+  Tech stack: npm workspaces; Fastify 5/Zod (typed boundaries); React/Vite,
+    React Router/TanStack Query (UI); Node 24 node:sqlite (local persistence without
+    external native bindings, verify before committing scaffold); Vitest,
+    Fastify inject and Testing Library (deterministic tests).
+  Architecture: web -> same-origin /api/v1 -> feature use cases -> SQLite.
+    Backend owns packages/contracts schemas; design.md Contracts remain authoritative.
+    Each api feature uses domain/application/adapters; conductor owns initial wiring.
+    Session tokens stored hashed in DB; never trust client ownership, balance or KYC.
+  Simulations: local KYC adapter selected by DEMO_KYC_RESULT at process startup;
+    fictitious opening balance and seed recipient. No remote provider calls.
+    docs/wallet-mock-api.md is an observed contract, not verified availability:
+    TEST-only identity, zero funded wallets, fixed recipients and manual finalization
+    cannot support this journey. No dual remote/local source of money.
+  Cutoffs: target p0 integration before 11:45 Peru; freeze then assess one immutable
+    commit with independent tester/security using demo-cutoff. Missing, failed or
+    stale evidence blocks readiness. p1 is assessed separately after this cutoff.
+    Planning and PR time consume the same timebox; do not hide incomplete work.
+  Success: demonstrate the four p0 steps and negative/ownership/persistence tests.
+    Initial full journey (contact transfer + receipt/history) is p1, not cutoff scope.
+    Business targets over a quarter: abandonment 30% -> 8%, onboarding 8 -> 3 min,
+    MAU 1000-2000 months 1-3, CAC PEN 10. A scripted demo cannot validate these.
+    Production analytics/attribution and legal/provider approvals remain future work.
+  Assumptions: local machine available for demo; no real personal data; no KYC
+    transition/review workflow or password recovery; refresh requires login again.
+    No user-approved hosting provider. Node/SQLite failure requires explicit decision,
+    not a silent in-memory fallback. Root configuration changes are sequenced.
+  Lanes (GitHub `area:` labels), each worked by a specialist agent:
+    frontend - design and UI in one: design system (tokens, components), screens, copy, state, API wiring
+    backend  - API, data, LLM and external calls, deploy, chores
+
+rules:
+  proposal:
+    - Keep it under 300 words and list what is explicitly out of scope.
+    - One change is one vertical slice (UI + API + data for one user action) or one capability. Never a whole layer.
+  specs:
+    - Every requirement has at least one WHEN/THEN scenario. Write scenarios so each one maps directly to a test.
+    - Every HTTP endpoint gets a requirement that names its method, path, request body and response status and body.
+  design:
+    - Start with a "## Contracts" section giving the exact API shapes (method, path, request, response, errors), data model fields and new env vars. Frontend and backend build against this section in parallel, so make it complete and unambiguous.
+    - Prefer the simplest thing that works for a demo. No speculative abstractions.
+  tasks:
+    - Each "## N. <group>" is exactly one GitHub issue and one PR. It should take 1-2 hours and change under 400 lines.
+    - 'Directly under each group heading, add one metadata comment line that `scripts/orchestrate.mjs` turns into an issue. Format, `agent=auto` and `depends=` being optional - `<!-- issue: area=backend size=M priority=p0 agent=auto depends=1,other-change:2 files=src/api/items.ts,src/db/schema.ts -->`'
+    - area is one of frontend|backend. Frontend owns design. LLM work, deploy and chores are backend. size is S (<1h) or M (1-2h); split anything bigger. priority is p0 (on the demo path), p1 or p2.
+    - Set agent=auto only when the group is unambiguous, has clear acceptance criteria in the specs and needs no human judgement or secrets. Workers started with `/work <lane> auto-only` take only these.
+    - Optional `assignee=<github-login>` reserves a group for one person (the conductor's scaffold groups), so the orchestrator never gives it to a worker.
+    - depends lists group numbers in this change, or `<change>:<N>` for another change. Leave it empty whenever you can - fewer dependencies means more parallel work.
+    - The first frontend group of the project builds the design system (tokens, core components, page shell). Every screen group depends on it.
+    - Two groups that can run at the same time must not edit the same files. If they must, make one depend on the other.
+    - The last task in every group is a test task that covers the relevant spec scenarios.
+
+operations:
+  apply:
+    guidance:
+      - When working from a GitHub issue, implement ONLY the task group that issue names, and tick only that group's checkboxes. Other groups belong to other people or agents.
+      - Don't change a contract from design.md or the spec deltas unless the issue says to. If you must, update the change's design.md and spec deltas in the same PR and flag it in the PR body.
+  archive:
+    guidance:
+      - Archive only when every issue for the change is closed. Run the `check` skill after archiving.
