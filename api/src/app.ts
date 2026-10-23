@@ -23,7 +23,11 @@ import { LoginThrottle } from "./features/auth/application/login-throttle.js";
 import { getAccount } from "./features/auth/application/get-account.js";
 import { loginUser } from "./features/auth/application/login-user.js";
 import { resolveSession } from "./features/auth/application/resolve-session.js";
+import { Unauthenticated } from "./features/auth/domain/session.js";
 import { revokeSession } from "./features/auth/application/revoke-session.js";
+import { receiptHistoryRoutes } from "./features/receipt-history/adapters/http/routes.js";
+import { SqlitePaymentQueries } from "./features/receipt-history/adapters/persistence/sqlite-payment-queries.js";
+import { getPaymentReceipt, listPaymentHistory } from "./features/receipt-history/application/payment-history.js";
 import { onboardingRoutes } from "./features/onboarding/adapters/http/routes.js";
 import { LocalKyc } from "./features/onboarding/adapters/kyc/local-kyc.js";
 import { ScryptPasswords } from "./features/onboarding/adapters/persistence/scrypt-passwords.js";
@@ -165,6 +169,20 @@ export async function buildApp(deps: {
     }),
     // Per-process secret: the rate-limit store never holds raw document numbers.
     documentSecret: randomBytes(32),
+  });
+  const resolveOwner = resolveSession({ users, sessions, now: clock });
+  const payments = new SqlitePaymentQueries(database);
+  await app.register(receiptHistoryRoutes, {
+    authenticate: (token) => {
+      try {
+        return resolveOwner(token);
+      } catch (error) {
+        if (error instanceof Unauthenticated) return null;
+        throw error;
+      }
+    },
+    history: listPaymentHistory(payments),
+    receipt: getPaymentReceipt(payments),
   });
   return app;
 }
