@@ -1,0 +1,43 @@
+{
+  "name": "wallet-grupo01",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "workspaces": [
+    "api",
+    "packages/contracts",
+    "web"
+  ],
+  "scripts": {
+    "predev": "tsc -b packages/contracts",
+    "dev": "concurrently -n api,web \"npm run dev --workspace @wallet/api\" \"npm run dev --workspace @wallet/web\"",
+    "start": "npm start --workspace @wallet/api",
+    "lint": "eslint api/src packages/contracts/src web/src",
+    "typecheck": "tsc --noEmit && tsc -p web/tsconfig.json",
+    "pretest": "npm run typecheck",
+    "test": "vitest run",
+    "build": "tsc -b packages/contracts api && npm run build --workspace @wallet/web",
+    "db:migrate": "npm run db:migrate --workspace @wallet/api",
+    "seed:demo": "npm run seed:demo --workspace @wallet/api",
+    "format": "prettier --write api packages/contracts web *.json *.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.8",
+    "@types/node": "24.19.2",
+    "concurrently": "10.0.6",
+    "eslint": "10.13.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "jsdom": "30.1.3",
+    "prettier": "3.9.10",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.0",
+    "vitest": "4.1.12"
+  }
+}
