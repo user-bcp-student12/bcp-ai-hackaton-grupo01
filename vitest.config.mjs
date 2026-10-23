@@ -23,6 +23,7 @@ export default defineConfig({
       "api/src/**/*.test.ts",
       "packages/contracts/src/**/*.test.ts",
       "web/src/**/*.test.tsx",
+      "tests/e2e/**/*.test.ts",
     ],
     environment: "node",
   },
