@@ -1,0 +1,19 @@
+{
+  "name": "@wallet/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../.env --import tsx --watch src/server.ts",
+    "start": "node --env-file-if-exists=../.env dist/server.js",
+    "db:migrate": "node --env-file-if-exists=../.env --import tsx src/database-cli.ts migrate",
+    "seed:demo": "node --env-file-if-exists=../.env --import tsx src/database-cli.ts seed"
+  },
+  "dependencies": {
+    "@fastify/cors": "11.3.1",
+    "@fastify/static": "10.1.7",
+    "@wallet/contracts": "*",
+    "fastify": "5.12.7",
+    "fastify-type-provider-zod": "6.1.0",
+    "zod": "4.6.7"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "@wallet/contracts",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/common.ts",
+      "import": "./dist/common.js"
+    }
+  },
+  "dependencies": {
+    "zod": "4.6.7"
+  }
+}

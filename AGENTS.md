@@ -44,12 +44,12 @@ Stay inside your lane's folders. Edit another lane's files only when the issue s
 | Task    | Command |
 |---------|---------|
 | Spec validate | `openspec validate --all --strict` |
-| Install | `TODO` |
-| Dev     | `TODO` |
-| Lint    | `TODO` |
-| Test    | `TODO` |
-| Build   | `TODO` |
-| Seed    | `TODO` |
+| Install | `npm ci` |
+| Dev     | `npm run dev` |
+| Lint    | `npm run lint` |
+| Test    | `npm test` |
+| Build   | `npm run build` |
+| Seed    | `npm run db:migrate` then `npm run seed:demo` |
 
 `node scripts/orchestrate.mjs check` runs Spec validate, then Install, Lint, Test and Build, from this table: it is the CI. `scaffold` fills in the TODO rows with commands that work in any Windows shell (for example `npm run lint`).
 
@@ -85,3 +85,11 @@ The human explicitly approved a **local demo instead of public deployment** for 
 Scaffold must record verified install/dev/build/start steps and local URLs here.
 Do not claim a live deployment, choose a hosting provider or use real payment services.
 Public deployment requires a later explicit decision about HTTPS and persistent storage.
+
+Local steps, verified on Node 24.22.1 (`.node-version`):
+
+1. `npm ci`, then copy `.env.example` to `.env`.
+2. `npm run build`, then `npm start`. The API serves the built web shell and `/api/v1`.
+3. Open http://127.0.0.1:3000 (API and built web). `npm run dev` instead serves the web at http://localhost:5173 and proxies `/api` to the API on port 3000.
+
+Unknown `/api/*` routes return a JSON 404. Invalid configuration makes `npm start` exit with code 1.
