@@ -1,29 +1,52 @@
 import { errorResponseSchema } from "@wallet/contracts";
-import type { z } from "zod";
+import { z } from "zod";
 
 const DEFAULT_ERROR_MESSAGE = "No se pudo completar la solicitud.";
+
+// Only the error object is read: some failures (e.g. 500 registration) add
+// sibling keys such as walletId, which the strict top-level schema rejects.
+const errorBodySchema = z.object({ error: errorResponseSchema.shape.error });
+
+export type ApiErrorDetail = { readonly field: string; readonly code: string };
 
 export class ApiError extends Error {
   readonly code: string;
   readonly status: number;
+  readonly details: readonly ApiErrorDetail[];
 
-  constructor(code: string, message: string, status: number) {
+  constructor(
+    code: string,
+    message: string,
+    status: number,
+    details: readonly ApiErrorDetail[] = [],
+  ) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
+    this.details = details;
   }
 }
 
-export async function getJson<T>(
+const defaultBaseUrl = (): string =>
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "/api/v1";
+
+function toApiError(status: number, body: unknown): ApiError {
+  const parsed = errorBodySchema.safeParse(body);
+  if (!parsed.success) {
+    return new ApiError("HTTP_ERROR", DEFAULT_ERROR_MESSAGE, status);
+  }
+  const { code, message, details } = parsed.data.error;
+  return new ApiError(code, message, status, details);
+}
+
+async function send<T>(
   path: string,
+  init: RequestInit,
   schema: z.ZodType<T>,
-  baseUrl: string = (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
-    "/api/v1",
+  baseUrl: string,
 ): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, {
-    headers: { Accept: "application/json" },
-  });
+  const response = await fetch(`${baseUrl}${path}`, init);
   let body: unknown;
   try {
     body = (await response.json()) as unknown;
@@ -32,13 +55,42 @@ export async function getJson<T>(
   }
 
   if (!response.ok) {
-    const parsed = errorResponseSchema.safeParse(body);
-    throw new ApiError(
-      parsed.success ? parsed.data.error.code : "HTTP_ERROR",
-      parsed.success ? parsed.data.error.message : DEFAULT_ERROR_MESSAGE,
-      response.status,
-    );
+    throw toApiError(response.status, body);
   }
 
   return schema.parse(body);
+}
+
+export function getJson<T>(
+  path: string,
+  schema: z.ZodType<T>,
+  baseUrl: string = defaultBaseUrl(),
+): Promise<T> {
+  return send(
+    path,
+    { headers: { Accept: "application/json" } },
+    schema,
+    baseUrl,
+  );
+}
+
+export function postJson<T>(
+  path: string,
+  body: unknown,
+  schema: z.ZodType<T>,
+  baseUrl: string = defaultBaseUrl(),
+): Promise<T> {
+  return send(
+    path,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    },
+    schema,
+    baseUrl,
+  );
 }

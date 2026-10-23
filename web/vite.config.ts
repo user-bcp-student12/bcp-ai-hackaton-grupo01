@@ -13,11 +13,20 @@ export default defineConfig(({ mode }) => {
     envDir: repositoryRoot,
     plugins: [react()],
     resolve: {
-      alias: {
-        "@wallet/contracts": fileURLToPath(
-          new URL("../packages/contracts/src/common.ts", import.meta.url),
-        ),
-      },
+      alias: [
+        {
+          find: /^@wallet\/contracts$/,
+          replacement: fileURLToPath(
+            new URL("../packages/contracts/src/common.ts", import.meta.url),
+          ),
+        },
+        {
+          find: /^@wallet\/contracts\/(.+)$/,
+          replacement: fileURLToPath(
+            new URL("../packages/contracts/src/$1.ts", import.meta.url),
+          ),
+        },
+      ],
     },
     server: {
       host: "127.0.0.1",

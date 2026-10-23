@@ -43,11 +43,52 @@ body {
   margin-bottom: var(--space-md);
 }
 
-.field input {
+.field input,
+.field select {
   padding: 0.5rem;
   font: inherit;
+  color: inherit;
+  background: var(--color-surface);
   border: 1px solid var(--color-muted);
   border-radius: var(--radius);
+}
+
+.card {
+  display: grid;
+  gap: var(--space-md);
+  padding: var(--space-lg) var(--space-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-muted);
+  border-radius: var(--radius);
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.card:focus {
+  outline: none;
+}
+
+.card p {
+  margin: 0;
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  align-items: center;
+}
+
+.button-link {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  color: var(--color-surface);
+  background: var(--color-accent);
+  border-radius: var(--radius);
+  text-decoration: none;
 }
 
 .field-error {

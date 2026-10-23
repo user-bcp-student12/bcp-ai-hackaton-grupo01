@@ -14,6 +14,6 @@
 
 ## 3. Build registration and KYC status screens
 <!-- issue: area=frontend size=M priority=p0 depends=scaffold:2,1 files=web/src/features/onboarding/,web/src/App.tsx -->
-- [ ] 3.1 Build registration form using shared schemas and scaffold controls, with pending/rejected/active result views; verify labeled keyboard-accessible controls.
-- [ ] 3.2 Connect typed API hooks and handle loading/400/409/429/technical errors without success fallback; verify demo disclaimer and clear next-step login action.
-- [ ] 3.3 Test form scenarios with Testing Library and contract-conforming client mocks, including leading-zero password, CE and inactive/error states.
+- [x] 3.1 Build registration form using shared schemas and scaffold controls, with pending/rejected/active result views; verify labeled keyboard-accessible controls.
+- [x] 3.2 Connect typed API hooks and handle loading/400/409/429/technical errors without success fallback; verify demo disclaimer and clear next-step login action.
+- [x] 3.3 Test form scenarios with Testing Library and contract-conforming client mocks, including leading-zero password, CE and inactive/error states.
