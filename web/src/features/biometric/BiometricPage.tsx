@@ -1,13 +1,13 @@
 import { useRef, useState, type SyntheticEvent } from "react";
+import { digitsOnly, DNI_LENGTH, PASSWORD_LENGTH } from "../../lib/inputFilters";
 import { useMutation } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router";
-import {
-  type BiometricProfileResponse,
-} from "@wallet/contracts/biometric";
+import { type BiometricProfileResponse } from "@wallet/contracts/biometric";
 import { passwordSchema } from "@wallet/contracts/onboarding";
 import { ApiError } from "../../lib/apiClient";
 import { useSession } from "../../lib/session";
 import { PageShell } from "../../ui/PageShell";
+import { Illustration } from "../../ui/Illustration";
 import { StatusMessage } from "../../ui/StatusMessage";
 import { TextField } from "../../ui/TextField";
 import { enterWithBiometrics, fetchBiometricProfile } from "./biometric-api";
@@ -80,7 +80,7 @@ export function BiometricPage() {
   function handleEnter(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!profile || enter.isPending) return;
-    if (!passwordSchema.safeParse(password).success) {
+    if (!profile.hasAccount && !passwordSchema.safeParse(password).success) {
       setFieldError(PASSWORD_MESSAGE);
       return;
     }
@@ -92,7 +92,7 @@ export function BiometricPage() {
     setFieldError(undefined);
     enter.mutate({
       documentNumber: profile.documentNumber,
-      password,
+      ...(profile.hasAccount ? {} : { password }),
       faceImage,
     });
   }
@@ -108,6 +108,7 @@ export function BiometricPage() {
   if (!profile) {
     return (
       <PageShell title="Acceso biométrico">
+        <Illustration name="biometric" />
         <p>Ingresa tu DNI. Tus demás datos se cargan automáticamente.</p>
         <form onSubmit={handleLookup} noValidate aria-busy={lookup.isPending}>
           <TextField
@@ -115,14 +116,17 @@ export function BiometricPage() {
             label="DNI"
             inputMode="numeric"
             autoComplete="off"
+            placeholder="Ej.: 72193412"
             value={documentNumber}
             error={fieldError}
             onChange={(event) => {
-              setDocumentNumber(event.target.value);
+              setDocumentNumber(digitsOnly(event.target.value, DNI_LENGTH));
             }}
           />
           {lookup.isError ? (
-            <StatusMessage tone="error">{describeError(lookup.error)}</StatusMessage>
+            <StatusMessage tone="error">
+              {describeError(lookup.error)}
+            </StatusMessage>
           ) : null}
           <div className="form-actions">
             <button type="submit" disabled={lookup.isPending}>
@@ -137,7 +141,8 @@ export function BiometricPage() {
     );
   }
 
-  const isUnavailable = camera.state === "denied" || camera.state === "unsupported";
+  const isUnavailable =
+    camera.state === "denied" || camera.state === "unsupported";
   return (
     <PageShell title="Acceso biométrico">
       <section className="card" aria-label="Datos precargados">
@@ -158,30 +163,45 @@ export function BiometricPage() {
       </section>
       <form onSubmit={handleEnter} noValidate aria-busy={enter.isPending}>
         <div className="camera-frame">
-          <video ref={videoRef} muted playsInline aria-label="Vista de tu cámara" />
+          <video
+            ref={videoRef}
+            muted
+            playsInline
+            aria-label="Vista de tu cámara"
+          />
         </div>
         <StatusMessage tone={isUnavailable ? "error" : "info"}>
           {CAMERA_MESSAGES[camera.state]}
         </StatusMessage>
-        <TextField
-          id="biometric-password"
-          label={
-            profile.hasAccount ? "Contraseña de 6 dígitos" : "Crea tu contraseña de 6 dígitos"
-          }
-          type="password"
-          inputMode="numeric"
-          autoComplete={profile.hasAccount ? "current-password" : "new-password"}
-          value={password}
-          error={fieldError}
-          onChange={(event) => {
-            setPassword(event.target.value);
-          }}
-        />
+        {profile.hasAccount ? null : (
+          <TextField
+            id="biometric-password"
+            label="Crea tu contraseña de 6 dígitos"
+            type="password"
+            inputMode="numeric"
+            autoComplete="new-password"
+            value={password}
+            error={fieldError}
+            maxLength={PASSWORD_LENGTH}
+            placeholder="6 números"
+            onChange={(event) => {
+              setPassword(digitsOnly(event.target.value, PASSWORD_LENGTH));
+            }}
+          />
+        )}
+        {profile.hasAccount && fieldError ? (
+          <StatusMessage tone="error">{fieldError}</StatusMessage>
+        ) : null}
         {enter.isError ? (
-          <StatusMessage tone="error">{describeError(enter.error)}</StatusMessage>
+          <StatusMessage tone="error">
+            {describeError(enter.error)}
+          </StatusMessage>
         ) : null}
         <div className="form-actions">
-          <button type="submit" disabled={enter.isPending || camera.state !== "ready"}>
+          <button
+            type="submit"
+            disabled={enter.isPending || camera.state !== "ready"}
+          >
             {enter.isPending
               ? "Verificando…"
               : profile.hasAccount

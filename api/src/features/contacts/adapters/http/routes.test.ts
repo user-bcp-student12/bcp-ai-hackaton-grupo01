@@ -185,6 +185,22 @@ test("Lookup is throttled after the configured number of searches", async () => 
   expect(errorResponseSchema.parse(throttled.json()).error.code).toBe("RATE_LIMITED");
 });
 
+test("A contact registered with a full name is listed by its obfuscated name", async () => {
+  database
+    .prepare("UPDATE users SET full_name = ? WHERE phone = ?")
+    .run("Beto Ramírez Soto", BETO.phone);
+  const app = await start();
+  const token = await tokenFor(app, ANA.document);
+
+  const response = await add(app, token, { walletId: walletIdOf(BETO.phone) });
+
+  const { contact } = addContactResponseSchema.parse(response.json());
+  expect(contact.displayName).toBe("Beto R*** S***");
+  const listed = await list(app, token);
+  expect(listed.body).not.toContain("Ramírez");
+  expect(listed.body).toContain("Beto R*** S***");
+});
+
 test("Add stores one association, and a repeat returns the same contact with 200", async () => {
   const app = await start();
   const token = await tokenFor(app, ANA.document);
@@ -320,7 +336,7 @@ test("Contact responses never expose private identity fields", async () => {
   const response = await list(app, token);
 
   const [contact] = listContactsResponseSchema.parse(response.json()).contacts;
-  expect(Object.keys(contact ?? {}).sort()).toEqual(["createdAt", "id", "phone", "walletId"]);
+  expect(Object.keys(contact ?? {}).sort()).toEqual(["createdAt", "displayName", "id", "phone", "walletId"]);
   expect(response.body).not.toContain("@example.test");
 });
 

@@ -1,14 +1,18 @@
 import type { ReactNode } from "react";
 import { Link, NavLink } from "react-router";
+import { useHasSession } from "../lib/session";
 import bcpLogo from "./bcp-logo.svg";
 
 export const DEMO_DISCLAIMER =
   "Demo local: identidades y fondos ficticios. No es una billetera real.";
 
 const NAV_LINKS = [
+  { to: "/", label: "Inicio" },
   { to: "/billetera", label: "Saldo" },
   { to: "/contactos", label: "Contactos" },
   { to: "/pagos", label: "Pagos" },
+  { to: "/pagar-qr", label: "Pagar QR" },
+  { to: "/cobrar", label: "Cobrar QR" },
   { to: "/movimientos", label: "Historial" },
 ] as const;
 
@@ -18,6 +22,9 @@ type Props = {
 };
 
 export function PageShell({ title, children }: Props) {
+  // Signed-out visitors only get Inicio: every other page needs a session.
+  const hasSession = useHasSession();
+  const links = hasSession ? NAV_LINKS : NAV_LINKS.slice(0, 1);
   return (
     <div className="page-frame">
       <header className="app-header">
@@ -27,7 +34,7 @@ export function PageShell({ title, children }: Props) {
             <span>Altoque</span>
           </Link>
           <nav className="app-nav" aria-label="Principal">
-            {NAV_LINKS.map((link) => (
+            {links.map((link) => (
               <NavLink key={link.to} to={link.to}>
                 {link.label}
               </NavLink>

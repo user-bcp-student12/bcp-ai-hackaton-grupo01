@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import { ApiError } from "../../lib/apiClient";
+import { Illustration } from "../../ui/Illustration";
 import { StatusMessage } from "../../ui/StatusMessage";
 import {
   directionFor,
@@ -33,7 +34,10 @@ export function PaymentHistory({
   }
   if (history.status === "error") {
     return (
-      <HistoryError error={history.error} onRetry={() => void history.refetch()} />
+      <HistoryError
+        error={history.error}
+        onRetry={() => void history.refetch()}
+      />
     );
   }
 
@@ -43,7 +47,12 @@ export function PaymentHistory({
   });
 
   if (rows.length === 0) {
-    return <StatusMessage tone="info">Aún no tienes movimientos.</StatusMessage>;
+    return (
+      <div className="empty-state">
+        <Illustration name="history" />
+        <StatusMessage tone="info">Aún no tienes movimientos.</StatusMessage>
+      </div>
+    );
   }
 
   return (
@@ -53,7 +62,11 @@ export function PaymentHistory({
       </p>
       <ul className="history-list" aria-label="Movimientos">
         {rows.map(({ payment, direction }) => (
-          <HistoryRow key={payment.id} payment={payment} direction={direction} />
+          <HistoryRow
+            key={payment.id}
+            payment={payment}
+            direction={direction}
+          />
         ))}
       </ul>
     </>
@@ -71,13 +84,17 @@ function HistoryRow({
     <li className="history-row">
       <div className="history-row-main">
         <p className="history-direction">{directionLabel(direction)}</p>
+        <p className="history-counterparty">{payment.counterpartyName}</p>
         <p className="history-amount">{formatPen(payment.amountCents)}</p>
         <time className="history-date" dateTime={payment.createdAt}>
           {formatPaymentDate(payment.createdAt)}
         </time>
         <p className="history-reference">Referencia: {payment.id}</p>
       </div>
-      <Link className="history-link" to={`/movimientos/${encodeURIComponent(payment.id)}`}>
+      <Link
+        className="history-link"
+        to={`/movimientos/${encodeURIComponent(payment.id)}`}
+      >
         Ver comprobante
       </Link>
     </li>

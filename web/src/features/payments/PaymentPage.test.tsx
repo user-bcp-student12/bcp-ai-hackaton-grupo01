@@ -9,7 +9,7 @@ import {
   clearPaymentAttempt,
   hasUnresolvedPaymentAttempt,
 } from "./payment-attempt";
-import { PaymentPage } from "./PaymentPage";
+import { PaymentPage, type RetryPolicy } from "./PaymentPage";
 
 const ANA_WALLET = "wallet-demo-ana";
 const OWNER = "owner-a";
@@ -53,7 +53,9 @@ function urlOf(input: RequestInfo | URL): string {
   return input instanceof URL ? input.href : input.url;
 }
 
-function stubFetch(handler: (url: string, init: RequestInit) => Promise<Response>) {
+function stubFetch(
+  handler: (url: string, init: RequestInit) => Promise<Response>,
+) {
   const fetchMock = vi.fn<typeof fetch>((input, init) =>
     handler(urlOf(input), init ?? {}),
   );
@@ -91,7 +93,10 @@ const TEST_CONTACTS = [
 ];
 const ACCESS_TOKEN = "token-owner-a";
 
-function renderPage(ownerUserId: string = OWNER) {
+function renderPage(
+  ownerUserId: string = OWNER,
+  retryPolicy: RetryPolicy = { maxRetries: 0, delayMs: 0 },
+) {
   const queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false } },
   });
@@ -102,20 +107,17 @@ function renderPage(ownerUserId: string = OWNER) {
           ownerUserId={ownerUserId}
           accessToken={ACCESS_TOKEN}
           contacts={TEST_CONTACTS}
+          retryPolicy={retryPolicy}
         />
       </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
-async function reviewPayment(user: UserEvent, amount: string) {
+async function payNow(user: UserEvent, amount: string) {
   await user.selectOptions(screen.getByLabelText("Destinatario"), ANA_WALLET);
   await user.type(screen.getByLabelText("Monto en soles (PEN)"), amount);
-  await user.click(screen.getByRole("button", { name: "Revisar pago" }));
-}
-
-function confirmButton() {
-  return screen.getByRole("button", { name: "Confirmar pago" });
+  await user.click(screen.getByRole("button", { name: "Pagar" }));
 }
 
 test("Sends the signed-in user's bearer token with the payment", async () => {
@@ -123,8 +125,7 @@ test("Sends the signed-in user's bearer token with the payment", async () => {
   const user = userEvent.setup();
   renderPage();
 
-  await reviewPayment(user, "10");
-  await user.click(confirmButton());
+  await payNow(user, "10");
 
   await screen.findByRole("heading", { name: "Pago realizado" });
   const [, init] = fetchMock.mock.calls[0] ?? [];
@@ -133,16 +134,12 @@ test("Sends the signed-in user's bearer token with the payment", async () => {
   );
 });
 
-test("Sends the confirmed amount in cents with one idempotency key", async () => {
+test("Sends the amount in cents with one idempotency key", async () => {
   const fetchMock = stubFetch(() => json(paymentJson(), 201));
   const user = userEvent.setup();
   renderPage();
 
-  await reviewPayment(user, "25.50");
-  expect(screen.getByText("Vas a pagar S/ 25.50 a Ana Quispe.")).toBeVisible();
-  expect(fetchMock).not.toHaveBeenCalled();
-
-  await user.click(confirmButton());
+  await payNow(user, "25.50");
 
   expect(
     await screen.findByRole("heading", { name: "Pago realizado" }),
@@ -180,8 +177,7 @@ test("Refreshes the cached wallet balance after a successful payment", async () 
     </QueryClientProvider>,
   );
 
-  await reviewPayment(user, "10");
-  await user.click(confirmButton());
+  await payNow(user, "10");
 
   await screen.findByRole("heading", { name: "Pago realizado" });
   expect(queryClient.getQueryState(accountKey)?.isInvalidated).toBe(true);
@@ -192,7 +188,7 @@ test("Rejects an invalid amount without sending anything", async () => {
   const user = userEvent.setup();
   renderPage();
 
-  await reviewPayment(user, "1,50");
+  await payNow(user, ".");
 
   expect(
     screen.getByText(
@@ -202,13 +198,14 @@ test("Rejects an invalid amount without sending anything", async () => {
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
-test("Sends a single request when confirm is double clicked", async () => {
+test("Sends a single request when pay is double clicked", async () => {
   const fetchMock = stubFetch(() => new Promise<Response>(() => undefined));
   const user = userEvent.setup();
   renderPage();
 
-  await reviewPayment(user, "25.50");
-  await user.dblClick(confirmButton());
+  await user.selectOptions(screen.getByLabelText("Destinatario"), ANA_WALLET);
+  await user.type(screen.getByLabelText("Monto en soles (PEN)"), "25.50");
+  await user.dblClick(screen.getByRole("button", { name: "Pagar" }));
 
   expect(fetchMock).toHaveBeenCalledTimes(1);
 });
@@ -228,19 +225,16 @@ test("Keeps a lost response as unknown and resolves it with the same key", async
   const user = userEvent.setup();
   renderPage();
 
-  await reviewPayment(user, "25.50");
-  await user.click(confirmButton());
+  await payNow(user, "25.50");
 
   expect(
     await screen.findByRole("heading", { name: "Resultado por confirmar" }),
   ).toBeVisible();
   expect(
-    screen.queryByRole("button", { name: "Revisar pago" }),
+    screen.queryByRole("button", { name: "Pagar" }),
   ).not.toBeInTheDocument();
 
-  await user.click(
-    screen.getByRole("button", { name: "Consultar resultado" }),
-  );
+  await user.click(screen.getByRole("button", { name: "Consultar resultado" }));
 
   expect(
     await screen.findByRole("heading", { name: "Pago realizado" }),
@@ -261,7 +255,12 @@ test("Clears the attempt after a business rejection so the next payment gets a n
     sequence(
       () =>
         json(
-          { error: { code: "INSUFFICIENT_FUNDS", message: "Saldo insuficiente." } },
+          {
+            error: {
+              code: "INSUFFICIENT_FUNDS",
+              message: "Saldo insuficiente.",
+            },
+          },
           409,
         ),
       () => json(paymentJson(), 201),
@@ -270,16 +269,14 @@ test("Clears the attempt after a business rejection so the next payment gets a n
   const user = userEvent.setup();
   renderPage();
 
-  await reviewPayment(user, "25.50");
-  await user.click(confirmButton());
+  await payNow(user, "25.50");
 
   expect(
     await screen.findByText("Saldo insuficiente para este pago."),
   ).toBeVisible();
   expect(sessionStorage.length).toBe(0);
 
-  await user.click(screen.getByRole("button", { name: "Revisar pago" }));
-  await user.click(confirmButton());
+  await user.click(screen.getByRole("button", { name: "Pagar" }));
 
   expect(
     await screen.findByRole("heading", { name: "Pago realizado" }),
@@ -288,13 +285,91 @@ test("Clears the attempt after a business rejection so the next payment gets a n
   expect(second?.key).not.toBe(first?.key);
 });
 
+test("Retries a provider timeout automatically with the same key and succeeds", async () => {
+  const timeout = () =>
+    json(
+      {
+        error: {
+          code: "PROVIDER_TIMEOUT",
+          message: "El proveedor no respondió a tiempo.",
+        },
+      },
+      503,
+    );
+  const notFound = () =>
+    json(
+      { error: { code: "PAYMENT_NOT_FOUND", message: "No encontrado." } },
+      404,
+    );
+  const fetchMock = stubFetch(
+    sequence(timeout, notFound, () => json(paymentJson(), 201)),
+  );
+  const user = userEvent.setup();
+  renderPage(OWNER, { maxRetries: 2, delayMs: 0 });
+
+  await payNow(user, "25.50");
+
+  expect(
+    await screen.findByRole("heading", { name: "Pago realizado" }),
+  ).toBeVisible();
+  const [first, lookup, retried] = requestsOf(fetchMock);
+  expect(lookup?.url).toContain(`/payments/by-key/${first?.key ?? ""}`);
+  expect(retried?.key).toBe(first?.key);
+});
+
+test("Stops after the retry limit and offers a manual check", async () => {
+  const timeout = () =>
+    json(
+      {
+        error: {
+          code: "PROVIDER_TIMEOUT",
+          message: "El proveedor no respondió a tiempo.",
+        },
+      },
+      503,
+    );
+  stubFetch(() => timeout());
+  const user = userEvent.setup();
+  renderPage(OWNER, { maxRetries: 1, delayMs: 0 });
+
+  await payNow(user, "25.50");
+
+  expect(
+    await screen.findByRole("heading", { name: "Resultado por confirmar" }),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "Consultar resultado" }),
+  ).toBeVisible();
+});
+
+test("Shows a clear message when the provider declines and frees the form", async () => {
+  stubFetch(() =>
+    json(
+      {
+        error: {
+          code: "PAYMENT_DECLINED",
+          message: "El proveedor rechazó el pago.",
+        },
+      },
+      409,
+    ),
+  );
+  const user = userEvent.setup();
+  renderPage();
+
+  await payNow(user, "25.50");
+
+  expect(await screen.findByText(/El proveedor rechazó el pago/)).toBeVisible();
+  expect(sessionStorage.length).toBe(0);
+  expect(screen.getByRole("button", { name: "Pagar" })).toBeVisible();
+});
+
 test("Restores an unresolved attempt for its own user only", async () => {
   stubFetch(() => networkFailure());
   const user = userEvent.setup();
   const original = renderPage(OWNER);
 
-  await reviewPayment(user, "25.50");
-  await user.click(confirmButton());
+  await payNow(user, "25.50");
   expect(
     await screen.findByRole("heading", { name: "Resultado por confirmar" }),
   ).toBeVisible();
@@ -304,9 +379,7 @@ test("Restores an unresolved attempt for its own user only", async () => {
   expect(
     screen.queryByRole("heading", { name: "Resultado por confirmar" }),
   ).not.toBeInTheDocument();
-  expect(
-    screen.getByRole("button", { name: "Revisar pago" }),
-  ).toBeVisible();
+  expect(screen.getByRole("button", { name: "Pagar" })).toBeVisible();
   otherUser.unmount();
 
   renderPage(OWNER);

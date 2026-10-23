@@ -6,8 +6,7 @@ const INVALID_AMOUNT_MESSAGE =
 const NON_POSITIVE_AMOUNT_MESSAGE = "El monto debe ser mayor que cero.";
 
 export type AmountParseResult =
-  | { ok: true; cents: number }
-  | { ok: false; message: string };
+  { ok: true; cents: number } | { ok: false; message: string };
 
 export function parsePenAmountToCents(input: string): AmountParseResult {
   const text = input.trim();
@@ -24,6 +23,12 @@ export function parsePenAmountToCents(input: string): AmountParseResult {
     return { ok: false, message: NON_POSITIVE_AMOUNT_MESSAGE };
   }
   return { ok: true, cents };
+}
+
+export function formatCentsAsDecimal(cents: number): string {
+  const whole = Math.floor(cents / CENTS_PER_SOL);
+  const fraction = String(cents % CENTS_PER_SOL).padStart(DECIMAL_PLACES, "0");
+  return `${String(whole)}.${fraction}`;
 }
 
 export function formatPenCents(cents: number): string {

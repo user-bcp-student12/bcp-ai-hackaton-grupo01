@@ -6,6 +6,11 @@ import type {
   Recipient,
   RecipientDirectory,
 } from "../../application/ports.js";
+import { contactDisplayName } from "../../domain/display-name.js";
+
+// Supplied by the composition root; null when the name is unknown.
+export type FullNameOf = (phone: string) => string | null;
+const unknownName: FullNameOf = () => null;
 
 const recipientRow = z.object({
   user_id: z.string(),
@@ -15,22 +20,27 @@ const recipientRow = z.object({
 const contactRow = z.object({
   id: z.string(),
   phone: z.string(),
+  full_name: z.string().nullable(),
   wallet_id: z.string(),
   created_at: z.string(),
 });
 
 const recipientSelect = `SELECT u.id AS user_id, u.phone, w.id AS wallet_id
   FROM users u JOIN wallets w ON w.user_id = u.id`;
-const contactSelect = `SELECT c.id, u.phone, w.id AS wallet_id, c.created_at
+const contactSelect = `SELECT c.id, u.phone, u.full_name, w.id AS wallet_id, c.created_at
   FROM contacts c
   JOIN users u ON u.id = c.contact_user_id
   JOIN wallets w ON w.user_id = u.id`;
 
-function mapContact(row: unknown): Contact {
+function mapContact(row: unknown, fullNameOf: FullNameOf): Contact {
   const parsed = contactRow.parse(row);
   return {
     id: parsed.id,
     phone: parsed.phone,
+    displayName: contactDisplayName(
+      parsed.full_name ?? fullNameOf(parsed.phone),
+      parsed.phone,
+    ),
     walletId: parsed.wallet_id,
     createdAt: parsed.created_at,
   };
@@ -62,7 +72,10 @@ export class SqliteRecipientDirectory implements RecipientDirectory {
 }
 
 export class SqliteContacts implements ContactRepository {
-  constructor(private readonly database: DatabaseSync) {}
+  constructor(
+    private readonly database: DatabaseSync,
+    private readonly fullNameOf: FullNameOf = unknownName,
+  ) {}
 
   add(
     contact: { id: string; ownerUserId: string; contactUserId: string },
@@ -84,7 +97,7 @@ export class SqliteContacts implements ContactRepository {
         `${contactSelect} WHERE c.owner_user_id = ? AND c.contact_user_id = ?`,
       )
       .get(ownerUserId, contactUserId);
-    return row ? mapContact(row) : null;
+    return row ? mapContact(row, this.fullNameOf) : null;
   }
 
   count(ownerUserId: string): number {
@@ -100,6 +113,6 @@ export class SqliteContacts implements ContactRepository {
         `${contactSelect} WHERE c.owner_user_id = ? ORDER BY c.created_at ASC, c.id ASC`,
       )
       .all(ownerUserId)
-      .map(mapContact);
+      .map((row) => mapContact(row, this.fullNameOf));
   }
 }

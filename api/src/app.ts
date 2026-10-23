@@ -21,10 +21,12 @@ import { authRoutes } from "./features/auth/adapters/http/routes.js";
 import { SqliteSessions } from "./features/auth/adapters/persistence/sqlite-sessions.js";
 import { LoginThrottle } from "./features/auth/application/login-throttle.js";
 import { getAccount } from "./features/auth/application/get-account.js";
-import { loginUser } from "./features/auth/application/login-user.js";
+import { loginUser, openSession } from "./features/auth/application/login-user.js";
 import { resolveSession } from "./features/auth/application/resolve-session.js";
 import { Unauthenticated } from "./features/auth/domain/session.js";
 import { biometricRoutes } from "./features/biometric/adapters/http/routes.js";
+import { findDemoProfileByPhone } from "./features/biometric/domain/demo-profiles.js";
+import { findSeedFullName } from "./seeds/names.js";
 import {
   enterWithBiometrics,
   getBiometricProfile,
@@ -41,7 +43,10 @@ import { addContact } from "./features/contacts/application/add-contact.js";
 import { listContacts } from "./features/contacts/application/list-contacts.js";
 import { lookupRecipient } from "./features/contacts/application/lookup-recipient.js";
 import { paymentRoutes } from "./features/payments/adapters/http/routes.js";
-import { UnavailablePayments } from "./features/payments/adapters/unavailable/unavailable-payments.js";
+import { qrRoutes } from "./features/qr/adapters/http/routes.js";
+import { SqliteQrCodes } from "./features/qr/adapters/persistence/sqlite-qr-codes.js";
+import { createQr, resolveQr } from "./features/qr/application/qr-codes.js";
+import { SqlitePaymentPort } from "./features/payments/adapters/persistence/sqlite-payment-port.js";
 import type { PaymentPort } from "./features/payments/application/ports.js";
 import { receiptHistoryRoutes } from "./features/receipt-history/adapters/http/routes.js";
 import { SqlitePaymentQueries } from "./features/receipt-history/adapters/persistence/sqlite-payment-queries.js";
@@ -178,6 +183,13 @@ export async function buildApp(deps: {
     newToken: () => randomBytes(32).toString("base64url"),
     sessionTtlSeconds: deps.config.SESSION_TTL_SECONDS,
   });
+  const open = openSession({
+    sessions,
+    now: clock,
+    newId: randomUUID,
+    newToken: () => randomBytes(32).toString("base64url"),
+    sessionTtlSeconds: deps.config.SESSION_TTL_SECONDS,
+  });
   await app.register(authRoutes, {
     login,
     revoke: revokeSession({ sessions, now: clock }),
@@ -205,6 +217,7 @@ export async function buildApp(deps: {
         openingBalanceCents: deps.config.DEMO_INITIAL_BALANCE_CENTS,
       }),
       login,
+      open,
     }),
     throttle: new LoginThrottle({
       maxAttempts: deps.config.AUTH_RATE_LIMIT_MAX,
@@ -213,8 +226,39 @@ export async function buildApp(deps: {
     }),
   });
   const directory = new SqliteRecipientDirectory(database);
-  const contacts = new SqliteContacts(database);
-  const payments = new SqlitePaymentQueries(database);
+  const qrs = new SqliteQrCodes(database);
+  await app.register(qrRoutes, {
+    authenticate: (token) => {
+      try {
+        const owner = resolve(token);
+        return { userId: owner.id, active: owner.active };
+      } catch (error) {
+        if (error instanceof Unauthenticated) return null;
+        throw error;
+      }
+    },
+    create: createQr({
+      qrs,
+      maxAmountCents: deps.config.PAYMENT_MAX_CENTS,
+      now: clock,
+      newId: randomUUID,
+    }),
+    resolve: resolveQr({ qrs, now: clock }),
+    throttle: new LoginThrottle({
+      maxAttempts: deps.config.AUTH_RATE_LIMIT_MAX,
+      windowSeconds: deps.config.AUTH_RATE_LIMIT_WINDOW_SECONDS,
+      now: () => Date.now(),
+    }),
+  });
+  const contacts = new SqliteContacts(
+    database,
+    (phone) =>
+      findDemoProfileByPhone(phone)?.fullName ?? findSeedFullName(phone),
+  );
+  const payments = new SqlitePaymentQueries(
+    database,
+    (phone) => findDemoProfileByPhone(phone)?.fullName ?? null,
+  );
   await app.register(receiptHistoryRoutes, {
     authenticate: (token) => {
       try {
@@ -228,8 +272,13 @@ export async function buildApp(deps: {
     receipt: getPaymentReceipt(payments),
   });
   await app.register(paymentRoutes, {
-    // Until the SQLite payment adapter is wired, every payment call fails closed with 503.
-    payments: deps.payments ?? new UnavailablePayments(),
+    payments:
+      deps.payments ??
+      new SqlitePaymentPort(database, {
+        maxAmountCents: deps.config.PAYMENT_MAX_CENTS,
+        now: () => new Date().toISOString(),
+        newId: randomUUID,
+      }),
     resolveOwner: (token) => {
       try {
         return resolve(token);

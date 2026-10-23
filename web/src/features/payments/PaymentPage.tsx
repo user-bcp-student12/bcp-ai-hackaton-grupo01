@@ -1,14 +1,9 @@
-import {
-  useRef,
-  useState,
-  type ReactNode,
-  type SyntheticEvent,
-} from "react";
+import { useRef, useState, type ReactNode, type SyntheticEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
 import { PageShell } from "../../ui/PageShell";
 import { StatusMessage } from "../../ui/StatusMessage";
-import { parsePenAmountToCents } from "./amount";
+import { formatCentsAsDecimal, parsePenAmountToCents } from "./amount";
 import {
   clearPaymentAttempt,
   loadPaymentAttempt,
@@ -24,10 +19,8 @@ import {
 import type { PaymentView, SavedContact } from "./payment-types";
 import {
   PaymentForm,
-  PaymentReview,
   type PaymentDraft,
   type PaymentDraftErrors,
-  type PaymentReviewData,
 } from "./PaymentForm";
 import { PaymentPendingPanel, PaymentSuccessPanel } from "./PaymentStatus";
 
@@ -39,28 +32,56 @@ type Props = {
   ownerUserId: string;
   accessToken: string;
   contacts: readonly SavedContact[];
+  retryPolicy?: RetryPolicy;
 };
 
-// Preselect the recipient from a "Pagar" link, or when there is only one choice.
+export type RetryPolicy = { maxRetries: number; delayMs: number };
+
+// Automatic retries reuse the attempt's idempotency key, so they can never charge twice.
+const DEFAULT_RETRY_POLICY: RetryPolicy = { maxRetries: 2, delayMs: 1_000 };
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+// Preselect the recipient from a "Pagar" link or QR, or when there is only one choice.
 function initialDraft(
   contacts: readonly SavedContact[],
   requestedWalletId: string | null,
+  requestedAmountCents: string | null,
 ): PaymentDraft {
   const requested = contacts.find((c) => c.walletId === requestedWalletId);
-  const preselected = requested ?? (contacts.length === 1 ? contacts[0] : undefined);
-  return { ...EMPTY_DRAFT, recipientWalletId: preselected?.walletId ?? "" };
+  const preselected =
+    requested ?? (contacts.length === 1 ? contacts[0] : undefined);
+  const cents = Number(requestedAmountCents);
+  const amountText =
+    requested && Number.isSafeInteger(cents) && cents > 0
+      ? formatCentsAsDecimal(cents)
+      : "";
+  return {
+    ...EMPTY_DRAFT,
+    recipientWalletId: preselected?.walletId ?? "",
+    amountText,
+  };
 }
 
-export function PaymentPage({ ownerUserId, accessToken, contacts }: Props) {
+export function PaymentPage({
+  ownerUserId,
+  accessToken,
+  contacts,
+  retryPolicy = DEFAULT_RETRY_POLICY,
+}: Props) {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const requestedWalletId = searchParams.get("to");
+  const requestedAmount = searchParams.get("amount");
   const [attempt, setAttempt] = useState(() => loadPaymentAttempt(ownerUserId));
   const [draft, setDraft] = useState<PaymentDraft>(() =>
-    initialDraft(contacts, requestedWalletId),
+    initialDraft(contacts, requestedWalletId, requestedAmount),
   );
   const [draftErrors, setDraftErrors] = useState<PaymentDraftErrors>({});
-  const [review, setReview] = useState<PaymentReviewData>();
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState<PaymentView>();
   const [failure, setFailure] = useState<string>();
@@ -93,7 +114,16 @@ export function PaymentPage({ ownerUserId, accessToken, contacts }: Props) {
     setBusy(true);
     setFailure(undefined);
     try {
-      applyResult(await run(current, accessToken));
+      let result = await run(current, accessToken);
+      for (
+        let retry = 0;
+        retry < retryPolicy.maxRetries && result.kind === "unknown";
+        retry += 1
+      ) {
+        await wait(retryPolicy.delayMs);
+        result = await resolvePaymentAttempt(current, accessToken);
+      }
+      applyResult(result);
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -104,8 +134,9 @@ export function PaymentPage({ ownerUserId, accessToken, contacts }: Props) {
     setDraft((current) => ({ ...current, [field]: value }));
   }
 
-  function handleReview(event: SyntheticEvent<HTMLFormElement>) {
+  function handlePay(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (inFlight.current) return;
     const amount = parsePenAmountToCents(draft.amountText);
     const recipient = findContact(draft.recipientWalletId);
     const errors: PaymentDraftErrors = {};
@@ -113,27 +144,18 @@ export function PaymentPage({ ownerUserId, accessToken, contacts }: Props) {
     if (!amount.ok) errors.amountText = amount.message;
     setDraftErrors(errors);
     if (!recipient || !amount.ok) return;
-    setReview({
+    const created: PaymentAttempt = {
+      ownerUserId,
+      key: crypto.randomUUID(),
       payload: {
         recipientType: "contact",
         recipientWalletId: recipient.walletId,
         amountCents: amount.cents,
         currency: "PEN",
       },
-      recipientName: recipient.name,
-    });
-  }
-
-  function confirmReview() {
-    if (!review || inFlight.current) return;
-    const created: PaymentAttempt = {
-      ownerUserId,
-      key: crypto.randomUUID(),
-      payload: review.payload,
     };
     savePaymentAttempt(created);
     setAttempt(created);
-    setReview(undefined);
     void settleAttempt(created, submitPayment);
   }
 
@@ -143,7 +165,7 @@ export function PaymentPage({ ownerUserId, accessToken, contacts }: Props) {
 
   function startNewPayment() {
     setSuccess(undefined);
-    setDraft(initialDraft(contacts, requestedWalletId));
+    setDraft(initialDraft(contacts, requestedWalletId, requestedAmount));
     setDraftErrors({});
   }
 
@@ -169,16 +191,6 @@ export function PaymentPage({ ownerUserId, accessToken, contacts }: Props) {
         onResolve={resolveAttempt}
       />
     );
-  } else if (review) {
-    content = (
-      <PaymentReview
-        review={review}
-        onConfirm={confirmReview}
-        onBack={() => {
-          setReview(undefined);
-        }}
-      />
-    );
   } else {
     content = (
       <PaymentForm
@@ -186,7 +198,7 @@ export function PaymentPage({ ownerUserId, accessToken, contacts }: Props) {
         errors={draftErrors}
         contacts={contacts}
         onChange={changeDraft}
-        onSubmit={handleReview}
+        onSubmit={handlePay}
       />
     );
   }

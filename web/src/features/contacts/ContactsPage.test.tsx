@@ -8,7 +8,11 @@ import "@testing-library/jest-dom/vitest";
 import { MemoryRouter, useLocation } from "react-router";
 import { ApiError } from "../../lib/apiClient";
 import type { ContactsClient, ContactView } from "./contactsClient";
-import { SessionProvider, useSession, type ActiveSession } from "../../lib/session";
+import {
+  SessionProvider,
+  useSession,
+  type ActiveSession,
+} from "../../lib/session";
 import { ContactsPage } from "./ContactsPage";
 
 afterEach(() => {
@@ -39,10 +43,20 @@ function SessionControls() {
   const { signIn, logout } = useSession();
   return (
     <>
-      <button type="button" onClick={() => { signIn(sessionFor("ana")); }}>
+      <button
+        type="button"
+        onClick={() => {
+          signIn(sessionFor("ana"));
+        }}
+      >
         Entrar como Ana
       </button>
-      <button type="button" onClick={() => { signIn(sessionFor("beto")); }}>
+      <button
+        type="button"
+        onClick={() => {
+          signIn(sessionFor("beto"));
+        }}
+      >
         Entrar como Beto
       </button>
       <button type="button" onClick={() => void logout()}>
@@ -57,9 +71,14 @@ function LocationProbe() {
   return <p>{location.pathname + location.search}</p>;
 }
 
-function renderPage(client: ContactsClient, { signedIn = true } = {}) {
-  vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(null, { status: 204 }))));
-  const queryClient = new QueryClient();
+function renderPage(
+  client: ContactsClient,
+  { signedIn = true, queryClient = new QueryClient() } = {},
+) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => Promise.resolve(new Response(null, { status: 204 }))),
+  );
   const view = render(
     <QueryClientProvider client={queryClient}>
       <SessionProvider>
@@ -72,7 +91,9 @@ function renderPage(client: ContactsClient, { signedIn = true } = {}) {
     </QueryClientProvider>,
   );
   if (signedIn) {
-    return userEvent.click(screen.getByRole("button", { name: "Entrar como Ana" })).then(() => view);
+    return userEvent
+      .click(screen.getByRole("button", { name: "Entrar como Ana" }))
+      .then(() => view);
   }
   return Promise.resolve(view);
 }
@@ -80,6 +101,7 @@ function renderPage(client: ContactsClient, { signedIn = true } = {}) {
 const SAVED: ContactView = {
   id: "c1",
   phone: "+51999999999",
+  displayName: "María Q***",
   walletId: "w1",
   createdAt: "2026-10-23T10:00:00.000Z",
 };
@@ -96,7 +118,10 @@ function fakeClient(overrides: Partial<ContactsClient> = {}): ContactsClient {
 }
 
 async function searchPhone(phone: string) {
-  await userEvent.type(screen.getByLabelText("Celular del destinatario"), phone);
+  await userEvent.type(
+    screen.getByLabelText("Celular del destinatario"),
+    phone,
+  );
   await userEvent.click(screen.getByRole("button", { name: "Buscar y pagar" }));
 }
 
@@ -116,9 +141,26 @@ test("a found recipient is saved and opens the payment form", async () => {
   expect(addContact).toHaveBeenCalledWith("w1");
 });
 
+test("saving a recipient discards the payment screen's cached contact list", async () => {
+  const queryClient = new QueryClient();
+  queryClient.setQueryData(["contacts", "ana"], []);
+  const client = fakeClient({
+    lookupRecipient: vi.fn(() =>
+      Promise.resolve({ phone: "+51999999999", walletId: "w1" }),
+    ),
+  });
+  await renderPage(client, { queryClient });
+
+  await searchPhone("999999999");
+
+  expect(await screen.findByText("/pagos?to=w1")).toBeVisible();
+  expect(queryClient.getQueryData(["contacts", "ana"])).toBeUndefined();
+});
+
 test("a failed save keeps the user on contacts with feedback", async () => {
   const client = fakeClient({
-    lookupRecipient: () => Promise.resolve({ phone: SAVED.phone, walletId: SAVED.walletId }),
+    lookupRecipient: () =>
+      Promise.resolve({ phone: SAVED.phone, walletId: SAVED.walletId }),
     addContact: () => Promise.reject(new TypeError("Failed to fetch")),
   });
   await renderPage(client);
@@ -131,7 +173,7 @@ test("a failed save keeps the user on contacts with feedback", async () => {
   expect(screen.getByText("/")).toBeVisible();
 });
 
-test("a missing recipient shows feedback and selects nobody", async () => {
+test("a missing recipient shows feedback", async () => {
   await renderPage(fakeClient());
 
   await searchPhone("999999999");
@@ -139,12 +181,13 @@ test("a missing recipient shows feedback and selects nobody", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "No encontramos un destinatario activo con ese número.",
   );
-  expect(screen.queryByText(/Destinatario seleccionado/)).not.toBeInTheDocument();
 });
 
 test("an unexpected lookup failure shows the generic message", async () => {
   const client = fakeClient({
-    lookupRecipient: vi.fn(() => Promise.reject(new TypeError("Failed to fetch"))),
+    lookupRecipient: vi.fn(() =>
+      Promise.reject(new TypeError("Failed to fetch")),
+    ),
   });
   await renderPage(client);
 
@@ -158,7 +201,9 @@ test("an unexpected lookup failure shows the generic message", async () => {
 test("an empty contact list shows the empty state", async () => {
   await renderPage(fakeClient());
 
-  expect(await screen.findByText("Aún no tienes contactos guardados.")).toBeVisible();
+  expect(
+    await screen.findByText("Aún no tienes contactos guardados."),
+  ).toBeVisible();
 });
 
 test("a failed contact list can be retried", async () => {
@@ -173,23 +218,20 @@ test("a failed contact list can be retried", async () => {
   );
   await userEvent.click(screen.getByRole("button", { name: "Reintentar" }));
 
-  expect(await screen.findByText(SAVED.phone)).toBeVisible();
-});
-
-test("selecting a saved contact makes it the recipient", async () => {
-  await renderPage(fakeClient({ listContacts: () => Promise.resolve([SAVED]) }));
-
-  await userEvent.click(await screen.findByRole("button", { name: `Seleccionar ${SAVED.phone}` }));
-
-  expect(screen.getByText(`Destinatario seleccionado: ${SAVED.phone}`)).toBeVisible();
+  expect(await screen.findByText(SAVED.displayName)).toBeVisible();
 });
 
 test("contacts require login and send no request while signed out", async () => {
   const listContacts = vi.fn(() => Promise.resolve([]));
   await renderPage(fakeClient({ listContacts }), { signedIn: false });
 
-  expect(screen.getByText("Inicia sesión para ver tus contactos.")).toBeVisible();
-  expect(screen.getByRole("link", { name: "Ingresar" })).toHaveAttribute("href", "/ingresar");
+  expect(
+    screen.getByText("Inicia sesión para ver tus contactos."),
+  ).toBeVisible();
+  expect(screen.getByRole("link", { name: "Ingresar" })).toHaveAttribute(
+    "href",
+    "/ingresar",
+  );
   expect(listContacts).not.toHaveBeenCalled();
 });
 
@@ -199,13 +241,14 @@ test("logout clears the contact query state", async () => {
       listContacts: () => Promise.resolve([SAVED]),
     }),
   );
-  await userEvent.click(await screen.findByRole("button", { name: `Seleccionar ${SAVED.phone}` }));
+  expect(await screen.findByText(SAVED.displayName)).toBeVisible();
 
   await userEvent.click(screen.getByRole("button", { name: "Salir" }));
 
-  expect(await screen.findByText("Inicia sesión para ver tus contactos.")).toBeVisible();
-  expect(screen.queryByText(SAVED.phone)).not.toBeInTheDocument();
-  expect(screen.queryByText(/Destinatario seleccionado/)).not.toBeInTheDocument();
+  expect(
+    await screen.findByText("Inicia sesión para ver tus contactos."),
+  ).toBeVisible();
+  expect(screen.queryByText(SAVED.displayName)).not.toBeInTheDocument();
 });
 
 test("switching accounts discards the previous account contacts and selection", async () => {
@@ -214,21 +257,25 @@ test("switching accounts discards the previous account contacts and selection", 
     .mockResolvedValueOnce([SAVED])
     .mockResolvedValueOnce([]);
   await renderPage(fakeClient({ listContacts }));
-  await userEvent.click(await screen.findByRole("button", { name: `Seleccionar ${SAVED.phone}` }));
+  expect(await screen.findByText(SAVED.displayName)).toBeVisible();
 
-  await userEvent.click(screen.getByRole("button", { name: "Entrar como Beto" }));
+  await userEvent.click(
+    screen.getByRole("button", { name: "Entrar como Beto" }),
+  );
 
-  expect(await screen.findByText("Aún no tienes contactos guardados.")).toBeVisible();
-  expect(screen.queryByText(SAVED.phone)).not.toBeInTheDocument();
-  expect(screen.queryByText(/Destinatario seleccionado/)).not.toBeInTheDocument();
+  expect(
+    await screen.findByText("Aún no tienes contactos guardados."),
+  ).toBeVisible();
+  expect(screen.queryByText(SAVED.displayName)).not.toBeInTheDocument();
   expect(listContacts).toHaveBeenCalledTimes(2);
 });
 
 test("a Pagar link on each saved contact opens its payment form", async () => {
-  await renderPage(fakeClient({ listContacts: () => Promise.resolve([SAVED]) }));
-
-  expect(await screen.findByRole("link", { name: `Pagar a ${SAVED.phone}` })).toHaveAttribute(
-    "href",
-    "/pagos?to=w1",
+  await renderPage(
+    fakeClient({ listContacts: () => Promise.resolve([SAVED]) }),
   );
+
+  expect(
+    await screen.findByRole("link", { name: `Pagar a ${SAVED.displayName}` }),
+  ).toHaveAttribute("href", "/pagos?to=w1");
 });
